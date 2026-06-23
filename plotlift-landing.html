@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plotlift — lift the data off any chart</title>
+<meta name="description" content="A browser extension for researchers. Right-click any chart on any page or PDF and get verified data as CSV — without leaving the page.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FAFAF7;
+    --paper-2:#F1F0EA;
+    --ink:#1A2530;
+    --ink-soft:#5A6571;
+    --line:rgba(26,37,48,0.10);
+    --line-strong:rgba(26,37,48,0.18);
+    --teal:#127A63;
+    --teal-deep:#0C5E4B;
+    --vermilion:#E94E3C;
+    --radius:10px;
+    --maxw:1120px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Hanken Grotesk",system-ui,sans-serif;
+    font-size:17px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  .mono{font-family:"JetBrains Mono",monospace}
+  a{color:inherit}
+  ::selection{background:var(--teal);color:#fff}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:50;backdrop-filter:saturate(140%) blur(8px);background:rgba(250,250,247,0.82);border-bottom:1px solid var(--line)}
+  .nav-in{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:"Bricolage Grotesque";font-weight:700;font-size:20px;letter-spacing:-0.02em}
+  .brand-mark{width:26px;height:26px}
+  .nav-cta{font-family:"JetBrains Mono";font-size:13px;font-weight:500;text-decoration:none;border:1px solid var(--ink);padding:8px 16px;border-radius:100px;transition:.18s}
+  .nav-cta:hover{background:var(--ink);color:var(--paper)}
+
+  /* hero */
+  .hero{padding:72px 0 40px}
+  .hero-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:56px;align-items:center}
+  .eyebrow{font-family:"JetBrains Mono";font-size:12.5px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--teal);display:flex;align-items:center;gap:10px;margin-bottom:22px}
+  .eyebrow::before{content:"";width:28px;height:1px;background:var(--teal)}
+  h1{font-family:"Bricolage Grotesque";font-weight:700;font-size:clamp(40px,5.4vw,62px);line-height:0.98;letter-spacing:-0.03em;margin-bottom:22px}
+  h1 .accent{color:var(--teal);position:relative;white-space:nowrap}
+  .lede{font-size:19px;color:var(--ink-soft);max-width:30em;margin-bottom:32px}
+  .lede strong{color:var(--ink);font-weight:600}
+
+  /* form */
+  .capture{display:flex;gap:8px;max-width:440px;flex-wrap:wrap}
+  .capture input[type=email]{flex:1;min-width:200px;font-family:"Hanken Grotesk";font-size:16px;padding:14px 16px;border:1.5px solid var(--line-strong);border-radius:var(--radius);background:#fff;color:var(--ink);transition:.18s}
+  .capture input[type=email]:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 4px rgba(18,122,99,0.12)}
+  .btn{font-family:"JetBrains Mono";font-weight:500;font-size:14px;padding:14px 22px;border:none;border-radius:var(--radius);background:var(--ink);color:var(--paper);cursor:pointer;transition:.18s;white-space:nowrap}
+  .btn:hover{background:var(--teal-deep)}
+  .btn:active{transform:translateY(1px)}
+  .capture-note{font-family:"JetBrains Mono";font-size:12px;color:var(--ink-soft);margin-top:12px;letter-spacing:0.01em}
+  .form-msg{font-size:14px;margin-top:12px;min-height:1.2em}
+  .form-msg.ok{color:var(--teal-deep)}
+  .form-msg.err{color:var(--vermilion)}
+
+  /* hero demo */
+  .demo{background:#fff;border:1px solid var(--line-strong);border-radius:16px;padding:18px;box-shadow:0 1px 0 rgba(26,37,48,0.04),0 18px 40px -28px rgba(26,37,48,0.4)}
+  .demo-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 4px}
+  .demo-tag{font-family:"JetBrains Mono";font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft)}
+  .dots{display:flex;gap:6px}
+  .dots i{width:9px;height:9px;border-radius:50%;display:block;background:var(--line-strong)}
+  .demo-body{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;align-items:stretch}
+  .plot-box{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  #plot{display:block;width:100%;height:auto}
+  .csv{background:var(--ink);border-radius:10px;padding:12px 0;font-family:"JetBrains Mono";font-size:12px;color:#cfe6dd;overflow:hidden}
+  .csv-h{color:#7fd1ba;padding:0 14px 8px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:6px;display:flex;justify-content:space-between}
+  .csv-row{padding:3px 14px;display:flex;justify-content:space-between;opacity:0;transform:translateY(4px);transition:.3s}
+  .csv-row.show{opacity:1;transform:none}
+  .csv-row span:last-child{color:#fff}
+
+  /* sections */
+  section{padding:74px 0}
+  .sec-label{font-family:"JetBrains Mono";font-size:12.5px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:14px}
+  h2{font-family:"Bricolage Grotesque";font-weight:700;font-size:clamp(28px,3.4vw,40px);line-height:1.04;letter-spacing:-0.025em;max-width:18em;margin-bottom:18px}
+  .sec-intro{color:var(--ink-soft);font-size:18px;max-width:34em}
+
+  .divider{height:1px;background:var(--line);max-width:var(--maxw);margin:0 auto}
+
+  /* problem cards */
+  .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:44px}
+  .col{background:var(--paper);padding:30px 26px}
+  .col .n{font-family:"JetBrains Mono";font-size:12px;color:var(--vermilion);font-weight:500;margin-bottom:14px}
+  .col h3{font-family:"Bricolage Grotesque";font-weight:500;font-size:20px;letter-spacing:-0.01em;margin-bottom:10px}
+  .col p{font-size:15.5px;color:var(--ink-soft)}
+
+  /* steps */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:44px}
+  .step{position:relative;padding-top:26px;border-top:2px solid var(--ink)}
+  .step .k{position:absolute;top:-13px;left:0;background:var(--paper);padding-right:12px;font-family:"JetBrains Mono";font-weight:700;font-size:13px;color:var(--teal)}
+  .step h3{font-family:"Bricolage Grotesque";font-weight:500;font-size:21px;letter-spacing:-0.01em;margin-bottom:8px}
+  .step p{font-size:15.5px;color:var(--ink-soft)}
+
+  /* preorder */
+  .preorder{background:var(--ink);color:var(--paper);border-radius:20px;padding:54px;display:grid;grid-template-columns:1.2fr 1fr;gap:40px;align-items:center}
+  .preorder h2{color:var(--paper);max-width:none}
+  .preorder .sec-label{color:#7fd1ba}
+  .preorder p{color:#c3ccd4;font-size:17px}
+  .price{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+  .price .amt{font-family:"Bricolage Grotesque";font-weight:700;font-size:60px;letter-spacing:-0.03em;color:#fff}
+  .price .was{font-family:"JetBrains Mono";font-size:16px;color:#8a97a3;text-decoration:line-through}
+  .price-sub{font-family:"JetBrains Mono";font-size:13px;color:#7fd1ba;margin-bottom:26px}
+  .btn-pre{display:inline-block;font-family:"JetBrains Mono";font-weight:500;font-size:15px;padding:16px 30px;border-radius:var(--radius);background:var(--teal);color:#fff;text-decoration:none;transition:.18s}
+  .btn-pre:hover{background:#15a07f}
+  .pre-fine{font-family:"JetBrains Mono";font-size:12px;color:#8a97a3;margin-top:16px}
+
+  /* footer */
+  footer{padding:54px 0 64px;border-top:1px solid var(--line)}
+  .foot{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;align-items:flex-start}
+  .foot p{font-size:14.5px;color:var(--ink-soft);max-width:36em}
+  .foot .brand{margin-bottom:14px}
+  .foot-mono{font-family:"JetBrains Mono";font-size:12px;color:var(--ink-soft);letter-spacing:0.03em}
+
+  @media(max-width:880px){
+    .hero-grid,.demo-body,.preorder{grid-template-columns:1fr}
+    .hero{padding:48px 0 24px}
+    .demo{order:-1}
+    .cols,.steps{grid-template-columns:1fr}
+    .preorder{padding:36px 28px}
+    .price .amt{font-size:48px}
+    section{padding:56px 0}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .csv-row{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-in">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="24" height="24" rx="6" stroke="#1A2530" stroke-width="1.5"/>
+        <path d="M5 19 L10 12 L14 15 L21 6" stroke="#127A63" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="10" cy="12" r="2" fill="#E94E3C"/>
+        <circle cx="14" cy="15" r="2" fill="#E94E3C"/>
+      </svg>
+      Plotlift
+    </div>
+    <a class="nav-cta" href="#join">Join the waitlist</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Browser extension · for researchers</p>
+      <h1>Lift the data<br>off <span class="accent">any chart.</span></h1>
+      <p class="lede">Right-click a figure in any paper, page, or PDF and get the numbers behind it — as CSV. <strong>You see every point on the original before you export it.</strong> No screenshots, no uploads, no leaving the page.</p>
+      <form id="waitlist" class="capture" novalidate>
+        <input type="email" id="email" name="email" placeholder="you@university.edu" aria-label="Email address" required>
+        <button class="btn" type="submit">Get early access →</button>
+      </form>
+      <p class="form-msg" id="msg" role="status" aria-live="polite"></p>
+      <p class="capture-note">Free while in beta · no spam · unsubscribe anytime</p>
+    </div>
+
+    <div class="demo" aria-label="Demonstration: a chart being converted to data">
+      <div class="demo-head">
+        <span class="demo-tag">figure 3 · degradation kinetics</span>
+        <div class="dots"><i></i><i></i><i></i></div>
+      </div>
+      <div class="demo-body">
+        <div class="plot-box">
+          <svg id="plot" viewBox="0 0 300 220" role="img" aria-label="A scatter plot of concentration over time with data points being captured into a table">
+            <g stroke="var(--line)" stroke-width="0.75">
+              <line x1="38" y1="20" x2="38" y2="186"/>
+              <line x1="38" y1="186" x2="284" y2="186"/>
+              <line x1="38" y1="145" x2="284" y2="145" stroke="rgba(26,37,48,0.05)"/>
+              <line x1="38" y1="104" x2="284" y2="104" stroke="rgba(26,37,48,0.05)"/>
+              <line x1="38" y1="63" x2="284" y2="63" stroke="rgba(26,37,48,0.05)"/>
+            </g>
+            <text x="20" y="28" class="mono" font-size="8" fill="#5A6571">C/C₀</text>
+            <text x="262" y="200" class="mono" font-size="8" fill="#5A6571">t (min)</text>
+            <path id="curve" d="M38 34 Q120 30 158 86 T278 168" fill="none" stroke="#127A63" stroke-width="2" stroke-linecap="round"/>
+            <g id="points"></g>
+            <line id="cross" x1="38" y1="20" x2="38" y2="186" stroke="#E94E3C" stroke-width="1" opacity="0"/>
+          </svg>
+        </div>
+        <div class="csv" aria-hidden="true">
+          <div class="csv-h"><span>t_min</span><span>C/C0</span></div>
+          <div id="rows"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="divider"></div>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Why this needs to exist</p>
+    <h2>Getting numbers out of a published chart is still a 6-step chore.</h2>
+    <p class="sec-intro">Every researcher has done it. The data you need is right there in the figure — but locked inside a picture. The tools that free it haven't kept up.</p>
+    <div class="cols">
+      <div class="col">
+        <p class="n">01</p>
+        <h3>The free tool is clunky</h3>
+        <p>Screenshot the figure, open a separate site, upload it, calibrate the axes by hand, click each point. Then do it again for the next figure.</p>
+      </div>
+      <div class="col">
+        <p class="n">02</p>
+        <h3>Auto-detect grabs noise</h3>
+        <p>Existing digitizers pick up gridlines, legend markers, and axis ticks instead of your actual data — and can't tell two overlapping curves apart.</p>
+      </div>
+      <div class="col">
+        <p class="n">03</p>
+        <h3>AI just makes numbers up</h3>
+        <p>Pasting a chart into a chatbot is fast, but it quietly invents values — and accuracy collapses on exactly the dual-axis, low-res figures you care about.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">How Plotlift works</p>
+    <h2>Right where the figure already is.</h2>
+    <div class="steps">
+      <div class="step">
+        <span class="k mono">RIGHT-CLICK</span>
+        <h3>Point at the chart</h3>
+        <p>On any webpage or open PDF, right-click the figure and choose “Lift data.” The extension reads it in place — nothing to download or upload.</p>
+      </div>
+      <div class="step">
+        <span class="k mono">VERIFY</span>
+        <h3>Check every point</h3>
+        <p>Detected points are drawn back onto the original image. Drag, add, or delete any that look off. You confirm the data — the tool never hides its guesses.</p>
+      </div>
+      <div class="step">
+        <span class="k mono">EXPORT</span>
+        <h3>Take the numbers</h3>
+        <p>Copy straight to clipboard or export CSV, Excel, or JSON. Back to your analysis in seconds, with data you actually trust.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="preorder" id="join">
+      <div>
+        <p class="sec-label">Founding supporter</p>
+        <h2>Back it early, keep it for life.</h2>
+        <p>Plotlift is in active development. Pre-order now and lock in lifetime Pro access — AI auto-detect, batch figures, and every export format — for the price of a coffee. Or just join the free waitlist above.</p>
+      </div>
+      <div>
+        <div class="price">
+          <span class="amt">$5</span>
+          <span class="was">$39</span>
+        </div>
+        <p class="price-sub">one-time · lifetime Pro · founding price</p>
+        <a class="btn-pre" href="#" id="preorder" target="_blank" rel="noopener">Pre-order lifetime Pro →</a>
+        <p class="pre-fine">Full refund any time before launch. No charge if it never ships.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="24" height="24" rx="6" stroke="#1A2530" stroke-width="1.5"/>
+          <path d="M5 19 L10 12 L14 15 L21 6" stroke="#127A63" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="10" cy="12" r="2" fill="#E94E3C"/>
+          <circle cx="14" cy="15" r="2" fill="#E94E3C"/>
+        </svg>
+        Plotlift
+      </div>
+      <p>Built by a researcher who got tired of clicking points one by one. Made for anyone who reads papers and needs the data inside them.</p>
+    </div>
+    <div class="foot-mono">
+      © 2026 Plotlift<br>
+      hello@plotlift.app
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var pts=[[38,34],[78,40],[118,58],[158,86],[198,118],[238,148],[278,168]];
+  var labels=[["0","0.98"],["5","0.91"],["10","0.79"],["15","0.62"],["20","0.46"],["25","0.31"],["30","0.22"]];
+  var g=document.getElementById("points");
+  var rowsEl=document.getElementById("rows");
+  var cross=document.getElementById("cross");
+  var ns="http://www.w3.org/2000/svg";
+  var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches;
+
+  pts.forEach(function(p){
+    var c=document.createElementNS(ns,"circle");
+    c.setAttribute("cx",p[0]);c.setAttribute("cy",p[1]);
+    c.setAttribute("r","3.4");c.setAttribute("fill","#fff");
+    c.setAttribute("stroke","#E94E3C");c.setAttribute("stroke-width","1.6");
+    c.style.opacity="0";c.style.transition="opacity .25s";
+    g.appendChild(c);p._el=c;
+  });
+  labels.forEach(function(l){
+    var r=document.createElement("div");
+    r.className="csv-row";
+    r.innerHTML="<span>"+l[0]+"</span><span>"+l[1]+"</span>";
+    rowsEl.appendChild(r);l._el=r;
+  });
+
+  function reveal(i){
+    if(i>=pts.length){
+      cross.style.transition="opacity .4s";cross.style.opacity="0";return;
+    }
+    cross.setAttribute("x1",pts[i][0]);cross.setAttribute("x2",pts[i][0]);
+    cross.style.opacity="0.7";
+    pts[i]._el.style.opacity="1";
+    labels[i]._el.classList.add("show");
+    setTimeout(function(){reveal(i+1)},420);
+  }
+
+  function run(){
+    pts.forEach(function(p){p._el.style.opacity="0"});
+    labels.forEach(function(l){l._el.classList.remove("show")});
+    cross.style.transition="all .42s ease";
+    setTimeout(function(){reveal(0)},500);
+  }
+
+  if(reduce){
+    pts.forEach(function(p){p._el.style.opacity="1"});
+    labels.forEach(function(l){l._el.classList.add("show")});
+  } else {
+    var seen=false;
+    var io=new IntersectionObserver(function(e){
+      if(e[0].isIntersecting&&!seen){seen=true;run();}
+    },{threshold:0.4});
+    io.observe(document.getElementById("plot"));
+  }
+
+  var form=document.getElementById("waitlist");
+  var msg=document.getElementById("msg");
+
+  // ─── BREVO SETTINGS ──────────────────────────────────────────────
+  // 1. Get your API key: Brevo dashboard → your name → SMTP & API → API Keys
+  // 2. Get your list ID: Contacts → Lists → open your list → check the URL
+  var BREVO_API_KEY="YOUR_BREVO_API_KEY";
+  var BREVO_LIST_ID=0; // replace 0 with your real list ID, e.g. 3
+  // ─────────────────────────────────────────────────────────────────
+
+  form.addEventListener("submit",function(ev){
+    ev.preventDefault();
+    var email=document.getElementById("email").value.trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+      msg.className="form-msg err";msg.textContent="That email doesn't look right — mind checking it?";return;
+    }
+    if(BREVO_API_KEY==="YOUR_BREVO_API_KEY"||BREVO_LIST_ID===0){
+      msg.className="form-msg ok";msg.textContent="You're on the list. (Demo mode — paste your Brevo API key and list ID to go live.)";form.reset();return;
+    }
+    msg.className="form-msg";msg.textContent="Adding you…";
+    fetch("https://api.brevo.com/v3/contacts",{
+      method:"POST",
+      headers:{
+        "Accept":"application/json",
+        "Content-Type":"application/json",
+        "api-key":BREVO_API_KEY
+      },
+      body:JSON.stringify({
+        email:email,
+        listIds:[BREVO_LIST_ID],
+        updateEnabled:true
+      })
+    }).then(function(r){
+      if(r.ok||r.status===201||r.status===204){
+        msg.className="form-msg ok";msg.textContent="You’re on the list. We’ll email you the moment it’s ready.";form.reset();
+      } else {
+        return r.json().then(function(d){
+          msg.className="form-msg err";msg.textContent=(d&&d.message)||"Something went wrong — try again in a sec?";
+        });
+      }
+    }).catch(function(){
+      msg.className="form-msg err";msg.textContent="Network hiccup — try again in a sec?";
+    });
+  });
+})();
+</script>
+</body>
+</html>
